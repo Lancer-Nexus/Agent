@@ -4,6 +4,14 @@
 
 Provide a narrowly scoped and auditable host-management service.
 
+## MVP architecture baseline
+
+- Agent owns host and process lifecycle only; it does not own accounts, placement, character persistence or game simulation.
+- It reports readiness, capacity and lifecycle state to the Coordinator, which makes placement decisions.
+- It must preserve the transfer handoff lifecycle: `Requested -> Reserved -> Prepared -> SourceFrozen -> TargetAccepted -> Committed -> SourceReleased`; draining must allow active transfers to finish safely.
+- Character authority is protected by MySQL `lease_version` fencing outside the Agent. Redis is not authoritative storage.
+- Agent control messages use the versioned `Protocol` contracts and capability negotiation.
+
 ## Rules
 
 - Accept only authenticated and authorized control commands.
