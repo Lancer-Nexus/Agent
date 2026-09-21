@@ -26,3 +26,8 @@ Provide a narrowly scoped and auditable host-management service.
 ## Verification
 
 Test lost connections, duplicate commands, unauthorized paths, failed starts, partial upgrades and rollback behavior.
+
+## Working-model escalation
+
+- If a task requires complex reasoning beyond the current model's reliable scope, ask the user whether switching to a stronger model is desired before continuing.
+- Do not switch models silently or broaden the task because a stronger model may be useful.
