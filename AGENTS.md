@@ -27,7 +27,7 @@ Provide a narrowly scoped and auditable host-management service.
 
 ## Verification
 
-Test lost connections, reconnect backoff, duplicate heartbeats, monotonic sequence recovery, unauthorized paths, failed starts, partial upgrades and rollback behavior.
+Test lost connections, reconnect backoff, duplicate heartbeats, monotonic sequence recovery, missing/stale/mismatched instance runtime snapshots, unauthorized paths, failed starts, partial upgrades and rollback behavior.
 
 For the initial control worker, run:
 

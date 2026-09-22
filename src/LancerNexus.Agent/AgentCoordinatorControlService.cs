@@ -5,7 +5,6 @@ using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Runtime.Versioning;
-using System.Text.Json;
 using LancerNexus.Protocol;
 using MessagePack;
 
@@ -25,6 +24,7 @@ public sealed class AgentCoordinatorControlService : BackgroundService
     private readonly X509Certificate2 coordinatorCaCertificate;
     private readonly HeartbeatSequenceStore sequenceStore;
     private readonly HeartbeatSequenceStore instanceSequenceStore;
+    private readonly InstanceRuntimeStatusReader? instanceStatusReader;
 
     public AgentCoordinatorControlService(
         AgentQuicSettings settings,
@@ -40,6 +40,9 @@ public sealed class AgentCoordinatorControlService : BackgroundService
         ValidateClientCertificate(clientCertificate, settings.NodeId);
         sequenceStore = new HeartbeatSequenceStore(settings.SequenceFilePath);
         instanceSequenceStore = new HeartbeatSequenceStore(settings.SequenceFilePath + ".instance");
+        if (settings.InstanceStatusFilePath is not null)
+            instanceStatusReader = new InstanceRuntimeStatusReader(settings.InstanceStatusFilePath,
+                settings.InstanceId!, settings.SystemId!, settings.InstanceEndpoint!);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -157,7 +160,9 @@ public sealed class AgentCoordinatorControlService : BackgroundService
 
     private async Task SendInstanceHeartbeatAsync(QuicConnection connection, CancellationToken cancellationToken)
     {
-        var status = ReadRuntimeStatus();
+        var status = instanceStatusReader!.Read(DateTimeOffset.UtcNow);
+        if (status is null)
+            logger.LogWarning("Instance runtime status is absent, stale or invalid; reporting the instance as not ready");
         var heartbeat = new InstanceHeartbeat
         {
             AgentId = settings.AgentId,
@@ -181,43 +186,6 @@ public sealed class AgentCoordinatorControlService : BackgroundService
         var result = MessagePackSerializer.Deserialize<InstanceHeartbeatResponse>(response.Payload, UntrustedMessagePack);
         if (!result.Accepted || result.Sequence != heartbeat.Sequence)
             throw new InvalidOperationException($"Coordinator rejected Instance heartbeat {heartbeat.Sequence}: {result.ReasonCode}");
-    }
-
-    private InstanceRuntimeStatus? ReadRuntimeStatus()
-    {
-        try
-        {
-            var status = JsonSerializer.Deserialize<InstanceRuntimeStatus>(File.ReadAllText(settings.InstanceStatusFilePath!));
-            var now = DateTimeOffset.UtcNow;
-            if (status is null || status.WrittenAtUtc > now.AddSeconds(2) ||
-                now - status.WrittenAtUtc > TimeSpan.FromSeconds(10) ||
-                !string.Equals(status.InstanceId, settings.InstanceId, StringComparison.Ordinal) ||
-                !string.Equals(status.SystemId, settings.SystemId, StringComparison.Ordinal) ||
-                status.CurrentPlayers < 0 || status.MaxPlayers <= 0 || status.CurrentPlayers > status.MaxPlayers ||
-                !string.Equals(status.Endpoint, settings.InstanceEndpoint, StringComparison.Ordinal))
-            {
-                logger.LogWarning("Instance runtime status is absent, stale or invalid; reporting the instance as not ready");
-                return null;
-            }
-            return status;
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
-        {
-            logger.LogWarning("Unable to read instance runtime status from {StatusFile}; reporting not ready: {Error}",
-                settings.InstanceStatusFilePath, exception.Message);
-            return null;
-        }
-    }
-
-    private sealed class InstanceRuntimeStatus
-    {
-        public DateTimeOffset WrittenAtUtc { get; init; }
-        public string InstanceId { get; init; } = "";
-        public string SystemId { get; init; } = "";
-        public bool IsReady { get; init; }
-        public int CurrentPlayers { get; init; }
-        public int MaxPlayers { get; init; }
-        public string Endpoint { get; init; } = "";
     }
 
     private static async Task<ClusterEnvelope> ExchangeAsync(
