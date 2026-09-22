@@ -11,6 +11,8 @@ Provide a narrowly scoped and auditable host-management service.
 - It must preserve the transfer handoff lifecycle: `Requested -> Reserved -> Prepared -> SourceFrozen -> TargetAccepted -> Committed -> SourceReleased`; draining must allow active transfers to finish safely.
 - Character authority is protected by MySQL `lease_version` fencing outside the Agent. Redis is not authoritative storage.
 - Agent control messages use the versioned `Protocol` contracts and capability negotiation.
+- Agent initiates and maintains outbound QUIC/mTLS sessions; it must never open a public inbound control port.
+- Agent heartbeat sequence state must survive process restart so Coordinator replay/freshness checks remain monotonic.
 
 ## Rules
 
@@ -25,7 +27,18 @@ Provide a narrowly scoped and auditable host-management service.
 
 ## Verification
 
-Test lost connections, duplicate commands, unauthorized paths, failed starts, partial upgrades and rollback behavior.
+Test lost connections, reconnect backoff, duplicate heartbeats, monotonic sequence recovery, unauthorized paths, failed starts, partial upgrades and rollback behavior.
+
+For the initial control worker, run:
+
+```bash
+git submodule update --init --remote --merge Protocol
+dotnet restore tests/LancerNexus.Agent.Tests/LancerNexus.Agent.Tests.csproj
+dotnet format src/LancerNexus.Agent/LancerNexus.Agent.csproj --verify-no-changes --no-restore
+dotnet format tests/LancerNexus.Agent.Tests/LancerNexus.Agent.Tests.csproj --verify-no-changes --no-restore
+dotnet build tests/LancerNexus.Agent.Tests/LancerNexus.Agent.Tests.csproj --configuration Release --no-restore --warnaserror
+dotnet test tests/LancerNexus.Agent.Tests/LancerNexus.Agent.Tests.csproj --configuration Release --no-build
+```
 
 ## Working-model escalation
 
