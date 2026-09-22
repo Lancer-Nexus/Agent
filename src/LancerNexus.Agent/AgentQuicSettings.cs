@@ -34,8 +34,8 @@ public sealed record AgentQuicSettings(
                 "Agent QUIC requires Coordinator.QuicEndpoint, Coordinator.ServerName, NodeId, AgentId, client certificate, Coordinator CA and StateFile settings.");
 
         var intervalSeconds = configuration.GetValue<int?>("Agent:Coordinator:HeartbeatIntervalSeconds") ?? 5;
-        if (intervalSeconds is < 1 or > 60)
-            throw new InvalidOperationException("Agent heartbeat interval must be between 1 and 60 seconds.");
+        if (intervalSeconds is < 1 or > 10)
+            throw new InvalidOperationException("Agent heartbeat interval must be between 1 and 10 seconds to fit the default Coordinator freshness window.");
 
         var capabilities = configuration.GetSection("Agent:Capabilities").Get<string[]>() ??
                            ["cluster_handshake_v1", "agent_heartbeat_v1"];

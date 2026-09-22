@@ -30,6 +30,24 @@ public sealed class AgentSettingsAndSequenceTests
     }
 
     [Fact]
+    public void SettingsRejectHeartbeatIntervalOutsideCoordinatorFreshnessWindow()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Agent:Coordinator:QuicEndpoint"] = "10.20.0.20:7443",
+            ["Agent:Coordinator:ServerName"] = "coordinator.internal",
+            ["Agent:NodeId"] = "node-01",
+            ["Agent:AgentId"] = "agent-01",
+            ["Agent:Coordinator:ClientCertificatePath"] = "agent.pfx",
+            ["Agent:Coordinator:CaCertificatePath"] = "coordinator-ca.pem",
+            ["Agent:StateFile"] = "agent-state/sequence.txt",
+            ["Agent:Coordinator:HeartbeatIntervalSeconds"] = "11"
+        }).Build();
+
+        Assert.Throws<InvalidOperationException>(() => AgentQuicSettings.FromConfiguration(configuration));
+    }
+
+    [Fact]
     public void SequenceStorePersistsIncreasingValuesAcrossInstances()
     {
         var path = Path.Combine(Path.GetTempPath(), $"lancer-agent-sequence-{Guid.NewGuid():N}.txt");

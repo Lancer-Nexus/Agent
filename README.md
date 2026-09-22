@@ -24,7 +24,7 @@ CI performs the same update before restoring and building the Agent.
 
 ## QUIC control worker
 
-Configure `Agent__NodeId`, `Agent__AgentId`, `Agent__Coordinator__QuicEndpoint` as `IP:port`, `Agent__Coordinator__ServerName`, client PFX path/password, Coordinator CA path and `Agent__StateFile`. The client certificate must have Client Authentication EKU and exactly one DNS SAN matching `Agent__NodeId`; the Coordinator server name must match its certificate. Do not expose an inbound Agent port.
+Configure `Agent__NodeId`, `Agent__AgentId`, `Agent__Coordinator__QuicEndpoint` as `IP:port`, `Agent__Coordinator__ServerName`, client PFX path/password, Coordinator CA path and `Agent__StateFile`. `Agent__Coordinator__HeartbeatIntervalSeconds` defaults to 5 and is limited to 1–10 seconds to fit the Coordinator's default freshness window. The client certificate must have Client Authentication EKU and exactly one DNS SAN matching `Agent__NodeId`; the Coordinator server name must match its certificate. Do not expose an inbound Agent port.
 
 The worker sends a Hello stream, then one `AgentHeartbeat` request per bidirectional QUIC stream over the same TLS 1.3 connection. Heartbeat sequence state is atomically replaced on disk before each send so Agent restarts do not roll the registry sequence backward. The Coordinator acknowledges each heartbeat. Instance heartbeats and lifecycle commands await the corresponding Agent host-management implementation.
 
