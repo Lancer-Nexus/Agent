@@ -13,7 +13,12 @@ public sealed record AgentQuicSettings(
     string CoordinatorCaCertificatePath,
     string SequenceFilePath,
     TimeSpan HeartbeatInterval,
-    string[] Capabilities)
+    string[] Capabilities,
+    string? InstanceStatusFilePath,
+    string? InstanceId,
+    string? SystemId,
+    string? InstanceEndpoint,
+    int InstanceMaxPlayers)
 {
     public const string Alpn = "lancer-nexus-control/1";
 
@@ -37,8 +42,22 @@ public sealed record AgentQuicSettings(
         if (intervalSeconds is < 1 or > 10)
             throw new InvalidOperationException("Agent heartbeat interval must be between 1 and 10 seconds to fit the default Coordinator freshness window.");
 
-        var capabilities = configuration.GetSection("Agent:Capabilities").Get<string[]>() ??
-                           ["cluster_handshake_v1", "agent_heartbeat_v1"];
+        var statusFile = configuration["Agent:Instance:StatusFile"];
+        var instanceId = configuration["Agent:Instance:InstanceId"];
+        var systemId = configuration["Agent:Instance:SystemId"];
+        var instanceEndpoint = configuration["Agent:Instance:Endpoint"];
+        var instanceMaxPlayers = configuration.GetValue<int?>("Agent:Instance:MaxPlayers") ?? 0;
+        var hasInstanceStatus = !string.IsNullOrWhiteSpace(statusFile);
+        if (hasInstanceStatus && (string.IsNullOrWhiteSpace(instanceId) || string.IsNullOrWhiteSpace(systemId) ||
+                                  string.IsNullOrWhiteSpace(instanceEndpoint) || instanceMaxPlayers <= 0))
+            throw new InvalidOperationException("Agent instance heartbeats require InstanceId, SystemId, Endpoint, StatusFile and positive MaxPlayers.");
+
+        var defaultCapabilities = hasInstanceStatus
+            ? new[] { "cluster_handshake_v1", "agent_heartbeat_v1", "instance_heartbeat_v1" }
+            : ["cluster_handshake_v1", "agent_heartbeat_v1"];
+        var capabilities = configuration.GetSection("Agent:Capabilities").Get<string[]>() ?? defaultCapabilities;
+        if (hasInstanceStatus && !capabilities.Contains("instance_heartbeat_v1", StringComparer.Ordinal))
+            throw new InvalidOperationException("Agent instance status requires the instance_heartbeat_v1 capability.");
         if (capabilities.Length == 0 || capabilities.Any(string.IsNullOrWhiteSpace) ||
             capabilities.Distinct(StringComparer.Ordinal).Count() != capabilities.Length)
             throw new InvalidOperationException("Agent capabilities must be non-empty and unique.");
@@ -54,6 +73,11 @@ public sealed record AgentQuicSettings(
             Path.GetFullPath(caPath),
             Path.GetFullPath(sequencePath),
             TimeSpan.FromSeconds(intervalSeconds),
-            capabilities);
+            capabilities,
+            hasInstanceStatus ? Path.GetFullPath(statusFile!) : null,
+            instanceId,
+            systemId,
+            instanceEndpoint,
+            instanceMaxPlayers);
     }
 }

@@ -5,6 +5,7 @@ using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Runtime.Versioning;
+using System.Text.Json;
 using LancerNexus.Protocol;
 using MessagePack;
 
@@ -23,6 +24,7 @@ public sealed class AgentCoordinatorControlService : BackgroundService
     private readonly X509Certificate2 clientCertificate;
     private readonly X509Certificate2 coordinatorCaCertificate;
     private readonly HeartbeatSequenceStore sequenceStore;
+    private readonly HeartbeatSequenceStore instanceSequenceStore;
 
     public AgentCoordinatorControlService(
         AgentQuicSettings settings,
@@ -37,6 +39,7 @@ public sealed class AgentCoordinatorControlService : BackgroundService
         coordinatorCaCertificate = X509CertificateLoader.LoadCertificateFromFile(settings.CoordinatorCaCertificatePath);
         ValidateClientCertificate(clientCertificate, settings.NodeId);
         sequenceStore = new HeartbeatSequenceStore(settings.SequenceFilePath);
+        instanceSequenceStore = new HeartbeatSequenceStore(settings.SequenceFilePath + ".instance");
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -122,6 +125,9 @@ public sealed class AgentCoordinatorControlService : BackgroundService
             throw new InvalidOperationException($"Coordinator rejected Agent Hello: {result.ReasonCode}");
         if (!result.NegotiatedCapabilities.Contains("agent_heartbeat_v1", StringComparer.Ordinal))
             throw new ProtocolViolationException("Coordinator did not negotiate the Agent heartbeat capability.");
+        if (settings.InstanceStatusFilePath is not null &&
+            !result.NegotiatedCapabilities.Contains("instance_heartbeat_v1", StringComparer.Ordinal))
+            throw new ProtocolViolationException("Coordinator did not negotiate the configured instance heartbeat capability.");
     }
 
     private async Task SendHeartbeatAsync(QuicConnection connection, CancellationToken cancellationToken)
@@ -144,6 +150,74 @@ public sealed class AgentCoordinatorControlService : BackgroundService
         var result = MessagePackSerializer.Deserialize<AgentHeartbeatResponse>(response.Payload, UntrustedMessagePack);
         if (!result.Accepted || result.Sequence != heartbeat.Sequence)
             throw new InvalidOperationException($"Coordinator rejected Agent heartbeat {heartbeat.Sequence}: {result.ReasonCode}");
+
+        if (settings.InstanceStatusFilePath is not null)
+            await SendInstanceHeartbeatAsync(connection, cancellationToken);
+    }
+
+    private async Task SendInstanceHeartbeatAsync(QuicConnection connection, CancellationToken cancellationToken)
+    {
+        var status = ReadRuntimeStatus();
+        var heartbeat = new InstanceHeartbeat
+        {
+            AgentId = settings.AgentId,
+            InstanceId = settings.InstanceId!,
+            SystemId = settings.SystemId!,
+            Sequence = instanceSequenceStore.Next(),
+            IsReady = status?.IsReady == true,
+            IsDraining = false,
+            CurrentPlayers = status?.CurrentPlayers ?? 0,
+            MaxPlayers = status?.MaxPlayers ?? settings.InstanceMaxPlayers,
+            Endpoint = settings.InstanceEndpoint!,
+            Capabilities = ["runtime_status_file_v1"]
+        };
+        var request = CreateEnvelope(ClusterMessageType.InstanceHeartbeat, ClusterFrameFlags.Request,
+            heartbeat.Sequence, MessagePackSerializer.Serialize(heartbeat));
+        var response = await ExchangeAsync(connection, request, cancellationToken);
+        if (response.MessageType != (ushort)ClusterMessageType.InstanceHeartbeatResponse ||
+            response.CorrelationId != request.CorrelationId)
+            throw new ProtocolViolationException("Coordinator returned an invalid Instance heartbeat response.");
+
+        var result = MessagePackSerializer.Deserialize<InstanceHeartbeatResponse>(response.Payload, UntrustedMessagePack);
+        if (!result.Accepted || result.Sequence != heartbeat.Sequence)
+            throw new InvalidOperationException($"Coordinator rejected Instance heartbeat {heartbeat.Sequence}: {result.ReasonCode}");
+    }
+
+    private InstanceRuntimeStatus? ReadRuntimeStatus()
+    {
+        try
+        {
+            var status = JsonSerializer.Deserialize<InstanceRuntimeStatus>(File.ReadAllText(settings.InstanceStatusFilePath!));
+            var now = DateTimeOffset.UtcNow;
+            if (status is null || status.WrittenAtUtc > now.AddSeconds(2) ||
+                now - status.WrittenAtUtc > TimeSpan.FromSeconds(10) ||
+                !string.Equals(status.InstanceId, settings.InstanceId, StringComparison.Ordinal) ||
+                !string.Equals(status.SystemId, settings.SystemId, StringComparison.Ordinal) ||
+                status.CurrentPlayers < 0 || status.MaxPlayers <= 0 || status.CurrentPlayers > status.MaxPlayers ||
+                !string.Equals(status.Endpoint, settings.InstanceEndpoint, StringComparison.Ordinal))
+            {
+                logger.LogWarning("Instance runtime status is absent, stale or invalid; reporting the instance as not ready");
+                return null;
+            }
+            return status;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            logger.LogWarning("Unable to read instance runtime status from {StatusFile}; reporting not ready: {Error}",
+                settings.InstanceStatusFilePath, exception.Message);
+            return null;
+        }
+    }
+
+    private sealed class InstanceRuntimeStatus
+    {
+        public DateTimeOffset WrittenAtUtc { get; init; }
+        public string InstanceId { get; init; } = "";
+        public string SystemId { get; init; } = "";
+        public bool IsReady { get; init; }
+        public int CurrentPlayers { get; init; }
+        public int MaxPlayers { get; init; }
+        public string Endpoint { get; init; } = "";
     }
 
     private static async Task<ClusterEnvelope> ExchangeAsync(
