@@ -39,6 +39,7 @@ public sealed record InstanceRuntimeStatus
     public string InstanceId { get; init; } = "";
     public string SystemId { get; init; } = "";
     public bool IsReady { get; init; }
+    public bool IsDraining { get; init; }
     public int CurrentPlayers { get; init; }
     public int MaxPlayers { get; init; }
     public string Endpoint { get; init; } = "";

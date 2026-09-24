@@ -25,6 +25,8 @@ public sealed class AgentCoordinatorControlService : BackgroundService
     private readonly HeartbeatSequenceStore sequenceStore;
     private readonly HeartbeatSequenceStore instanceSequenceStore;
     private readonly InstanceRuntimeStatusReader? instanceStatusReader;
+    private bool hasLoggedAgentRegistration;
+    private bool hasLoggedInstanceRegistration;
 
     public AgentCoordinatorControlService(
         AgentQuicSettings settings,
@@ -154,6 +156,12 @@ public sealed class AgentCoordinatorControlService : BackgroundService
         if (!result.Accepted || result.Sequence != heartbeat.Sequence)
             throw new InvalidOperationException($"Coordinator rejected Agent heartbeat {heartbeat.Sequence}: {result.ReasonCode}");
 
+        if (!hasLoggedAgentRegistration)
+        {
+            logger.LogInformation("Coordinator accepted the Agent heartbeat; Agent {AgentId} is registered.", settings.AgentId);
+            hasLoggedAgentRegistration = true;
+        }
+
         if (settings.InstanceStatusFilePath is not null)
             await SendInstanceHeartbeatAsync(connection, cancellationToken);
     }
@@ -170,7 +178,7 @@ public sealed class AgentCoordinatorControlService : BackgroundService
             SystemId = settings.SystemId!,
             Sequence = instanceSequenceStore.Next(),
             IsReady = status?.IsReady == true,
-            IsDraining = false,
+            IsDraining = status?.IsDraining == true,
             CurrentPlayers = status?.CurrentPlayers ?? 0,
             MaxPlayers = status?.MaxPlayers ?? settings.InstanceMaxPlayers,
             Endpoint = settings.InstanceEndpoint!,
@@ -186,6 +194,18 @@ public sealed class AgentCoordinatorControlService : BackgroundService
         var result = MessagePackSerializer.Deserialize<InstanceHeartbeatResponse>(response.Payload, UntrustedMessagePack);
         if (!result.Accepted || result.Sequence != heartbeat.Sequence)
             throw new InvalidOperationException($"Coordinator rejected Instance heartbeat {heartbeat.Sequence}: {result.ReasonCode}");
+
+        if (!hasLoggedInstanceRegistration)
+        {
+            logger.LogInformation(
+                "Coordinator accepted the instance heartbeat for {InstanceId}: ready {IsReady}, draining {IsDraining}, players {CurrentPlayers}/{MaxPlayers}.",
+                heartbeat.InstanceId,
+                heartbeat.IsReady,
+                heartbeat.IsDraining,
+                heartbeat.CurrentPlayers,
+                heartbeat.MaxPlayers);
+            hasLoggedInstanceRegistration = true;
+        }
     }
 
     private static async Task<ClusterEnvelope> ExchangeAsync(

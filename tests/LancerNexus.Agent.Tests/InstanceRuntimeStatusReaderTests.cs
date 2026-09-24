@@ -22,6 +22,10 @@ public sealed class InstanceRuntimeStatusReaderTests
         Assert.Equal(17, actual.CurrentPlayers);
         Assert.Equal(200, actual.MaxPlayers);
         Assert.False(Read(status with { IsReady = false })!.IsReady);
+
+        var draining = Read(status with { IsDraining = true });
+        Assert.NotNull(draining);
+        Assert.True(draining.IsDraining);
     }
 
     [Theory]
