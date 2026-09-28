@@ -18,7 +18,8 @@ public sealed record AgentQuicSettings(
     string? InstanceId,
     string? SystemId,
     string? InstanceEndpoint,
-    int InstanceMaxPlayers)
+    int InstanceMaxPlayers,
+    string[]? InstanceSystemIds = null)
 {
     public const string Alpn = "lancer-nexus-control/1";
 
@@ -48,6 +49,11 @@ public sealed record AgentQuicSettings(
         var instanceEndpoint = configuration["Agent:Instance:Endpoint"];
         var instanceMaxPlayers = configuration.GetValue<int?>("Agent:Instance:MaxPlayers") ?? 0;
         var hasInstanceStatus = !string.IsNullOrWhiteSpace(statusFile);
+        var systemIds = configuration.GetSection("Agent:Instance:SystemIds").Get<string[]>() ?? [];
+        if (systemIds.Length > 128 || systemIds.Any(string.IsNullOrWhiteSpace) ||
+            systemIds.Distinct(StringComparer.OrdinalIgnoreCase).Count() != systemIds.Length ||
+            (systemIds.Length > 0 && (!hasInstanceStatus || !systemIds.Contains(systemId, StringComparer.OrdinalIgnoreCase))))
+            throw new InvalidOperationException("Agent SystemIds must be unique and include the primary SystemId.");
         if (hasInstanceStatus && (string.IsNullOrWhiteSpace(instanceId) || string.IsNullOrWhiteSpace(systemId) ||
                                   string.IsNullOrWhiteSpace(instanceEndpoint) || instanceMaxPlayers <= 0))
             throw new InvalidOperationException("Agent instance heartbeats require InstanceId, SystemId, Endpoint, StatusFile and positive MaxPlayers.");
@@ -78,6 +84,7 @@ public sealed record AgentQuicSettings(
             instanceId,
             systemId,
             instanceEndpoint,
-            instanceMaxPlayers);
+            instanceMaxPlayers,
+            systemIds);
     }
 }

@@ -44,3 +44,8 @@ dotnet test tests/LancerNexus.Agent.Tests/LancerNexus.Agent.Tests.csproj --confi
 
 - If a task requires complex reasoning beyond the current model's reliable scope, ask the user whether switching to a stronger model is desired before continuing.
 - Do not switch models silently or broaden the task because a stronger model may be useful.
+
+## Nexus baseline system groups
+
+The base Nexus topology uses eight game instances, one per group: BR01-BR06 (`br-01`), BW01-BW10 (`bw-01`), EW01-EW05 (`ew-01`), IW01-IW06 (`iw-01`), KU01-KU06 (`ku-01`), LI01-LI05 (`li-01`), RH01-RH05 (`rh-01`), and `mixed-01` for all remaining registered systems. System nicknames are compared case insensitively and emitted lowercase. Folder names are not always world nicknames: `fp7` contains `fp7_system`; `intro` and `miners` are asset directories, not registered worlds.
+The current worker manages one instance report per process; prepare one Agent configuration/process per group, with separate AgentId and sequence files. All configured SystemIds must match the fresh LLServer status set before reporting ready. Each group shares one player limit and endpoint across its systems. Never report readiness from static topology alone.

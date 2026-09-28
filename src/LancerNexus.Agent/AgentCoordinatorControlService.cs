@@ -44,7 +44,7 @@ public sealed class AgentCoordinatorControlService : BackgroundService
         instanceSequenceStore = new HeartbeatSequenceStore(settings.SequenceFilePath + ".instance");
         if (settings.InstanceStatusFilePath is not null)
             instanceStatusReader = new InstanceRuntimeStatusReader(settings.InstanceStatusFilePath,
-                settings.InstanceId!, settings.SystemId!, settings.InstanceEndpoint!);
+                settings.InstanceId!, settings.SystemId!, settings.InstanceEndpoint!, settings.InstanceSystemIds);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -176,6 +176,7 @@ public sealed class AgentCoordinatorControlService : BackgroundService
             AgentId = settings.AgentId,
             InstanceId = settings.InstanceId!,
             SystemId = settings.SystemId!,
+            SystemIds = settings.InstanceSystemIds ?? [],
             Sequence = instanceSequenceStore.Next(),
             IsReady = status?.IsReady == true,
             IsDraining = status?.IsDraining == true,

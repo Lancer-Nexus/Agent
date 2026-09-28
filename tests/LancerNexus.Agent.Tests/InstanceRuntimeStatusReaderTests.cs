@@ -11,6 +11,23 @@ public sealed class InstanceRuntimeStatusReaderTests
     private static readonly DateTimeOffset Now = new(2026, 9, 22, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public void Read_RequiresTheConfiguredSystemSet()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"nexus-group-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(path, JsonSerializer.Serialize(Status() with { SystemIds = ["LI03", "li01"] }));
+            var reader = new InstanceRuntimeStatusReader(path, "liberty-01", "li01", "10.20.0.31:2300", ["li01", "li03"]);
+            Assert.NotNull(reader.Read(Now));
+            File.WriteAllText(path, JsonSerializer.Serialize(Status() with { SystemIds = ["li01", "li02"] }));
+            Assert.Null(reader.Read(Now));
+            File.WriteAllText(path, JsonSerializer.Serialize(Status()));
+            Assert.Null(reader.Read(Now));
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
     public void Read_ReturnsFreshMatchingServerStatus()
     {
         var status = Status();

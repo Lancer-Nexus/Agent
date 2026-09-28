@@ -6,7 +6,8 @@ public sealed class InstanceRuntimeStatusReader(
     string filePath,
     string instanceId,
     string systemId,
-    string endpoint)
+    string endpoint,
+    string[]? systemIds = null)
 {
     private static readonly TimeSpan MaximumAge = TimeSpan.FromSeconds(10);
     private readonly string fullPath = Path.GetFullPath(filePath);
@@ -20,6 +21,10 @@ public sealed class InstanceRuntimeStatusReader(
                 nowUtc - status.WrittenAtUtc > MaximumAge ||
                 !string.Equals(status.InstanceId, instanceId, StringComparison.Ordinal) ||
                 !string.Equals(status.SystemId, systemId, StringComparison.Ordinal) ||
+                status.SystemIds is null ||
+                !(status.SystemIds.Length > 0 ? status.SystemIds : [status.SystemId])
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase)
+                    .SetEquals(systemIds is { Length: > 0 } ? systemIds : [systemId]) ||
                 status.CurrentPlayers < 0 || status.MaxPlayers <= 0 || status.CurrentPlayers > status.MaxPlayers ||
                 !string.Equals(status.Endpoint, endpoint, StringComparison.Ordinal))
                 return null;
@@ -38,6 +43,7 @@ public sealed record InstanceRuntimeStatus
     public DateTimeOffset WrittenAtUtc { get; init; }
     public string InstanceId { get; init; } = "";
     public string SystemId { get; init; } = "";
+    public string[] SystemIds { get; init; } = [];
     public bool IsReady { get; init; }
     public bool IsDraining { get; init; }
     public int CurrentPlayers { get; init; }
