@@ -183,7 +183,11 @@ public sealed class AgentCoordinatorControlService : BackgroundService
             CurrentPlayers = status?.CurrentPlayers ?? 0,
             MaxPlayers = status?.MaxPlayers ?? settings.InstanceMaxPlayers,
             Endpoint = settings.InstanceEndpoint!,
-            Capabilities = ["runtime_status_file_v1"]
+            Capabilities = (status?.Capabilities ?? [])
+                .Append("runtime_status_file_v1")
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal)
+                .ToArray()
         };
         var request = CreateEnvelope(ClusterMessageType.InstanceHeartbeat, ClusterFrameFlags.Request,
             heartbeat.Sequence, MessagePackSerializer.Serialize(heartbeat));
