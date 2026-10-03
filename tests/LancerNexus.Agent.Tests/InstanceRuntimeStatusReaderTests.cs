@@ -11,6 +11,16 @@ public sealed class InstanceRuntimeStatusReaderTests
     private static readonly DateTimeOffset Now = new(2026, 9, 22, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public void Read_PreservesPrivateNpcEndpointAndRejectsMalformedValues()
+    {
+        var status = Status() with { NpcTransferEndpoint = "quic://10.20.0.31:26456" };
+        Assert.Equal(status.NpcTransferEndpoint, Read(status)!.NpcTransferEndpoint);
+        Assert.Null(Read(status with { NpcTransferEndpoint = "quic://host" }));
+        Assert.Null(Read(status with { NpcTransferEndpoint = "http://host:26456" }));
+        Assert.Null(Read(status with { NpcTransferEndpoint = "quic://host:26456/path" }));
+    }
+
+    [Fact]
     public void Read_RequiresTheConfiguredSystemSet()
     {
         var path = Path.Combine(Path.GetTempPath(), $"nexus-group-{Guid.NewGuid():N}.json");

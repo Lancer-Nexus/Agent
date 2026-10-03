@@ -183,6 +183,7 @@ public sealed class AgentCoordinatorControlService : BackgroundService
             CurrentPlayers = status?.CurrentPlayers ?? 0,
             MaxPlayers = status?.MaxPlayers ?? settings.InstanceMaxPlayers,
             Endpoint = settings.InstanceEndpoint!,
+            NpcTransferEndpoint = status?.NpcTransferEndpoint,
             Capabilities = (status?.Capabilities ?? [])
                 .Append("runtime_status_file_v1")
                 .Distinct(StringComparer.Ordinal)

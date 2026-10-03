@@ -1,5 +1,9 @@
 # Lancer Nexus Agent
 
+The runtime status reader validates the optional `NpcTransferEndpoint`
+(`quic://host:port`) and forwards it in instance heartbeats. NPC transport ports
+are independent of the game endpoint and may differ for instances on one host.
+
 The .NET 10 Agent worker runs on a Linux host. It establishes private outbound QUIC/mTLS connectivity to the Coordinator and reports sequenced Agent heartbeats. When configured with an LLServer runtime-status file, it also reports sequenced Instance heartbeats. Host lifecycle management is not implemented yet.
 
 ## Responsibilities

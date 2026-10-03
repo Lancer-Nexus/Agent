@@ -1,4 +1,5 @@
 using System.Text.Json;
+using LancerNexus.Protocol;
 
 namespace LancerNexus.Agent;
 
@@ -28,6 +29,8 @@ public sealed class InstanceRuntimeStatusReader(
                 status.Capabilities is null || status.Capabilities.Length > 32 ||
                 status.Capabilities.Any(capability => string.IsNullOrWhiteSpace(capability) || capability.Length > 96) ||
                 status.Capabilities.Distinct(StringComparer.Ordinal).Count() != status.Capabilities.Length ||
+                (status.NpcTransferEndpoint is not null &&
+                 !NpcTransferContractValidator.IsValidPeerEndpoint(status.NpcTransferEndpoint)) ||
                 status.CurrentPlayers < 0 || status.MaxPlayers <= 0 || status.CurrentPlayers > status.MaxPlayers ||
                 !string.Equals(status.Endpoint, endpoint, StringComparison.Ordinal))
                 return null;
@@ -53,4 +56,5 @@ public sealed record InstanceRuntimeStatus
     public int MaxPlayers { get; init; }
     public string Endpoint { get; init; } = "";
     public string[] Capabilities { get; init; } = [];
+    public string? NpcTransferEndpoint { get; init; }
 }

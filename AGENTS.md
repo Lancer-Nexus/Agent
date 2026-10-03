@@ -23,6 +23,7 @@ Provide a narrowly scoped and auditable host-management service.
 - Make start, stop, drain and upgrade operations idempotent.
 - Wait for readiness and draining state instead of using uncontrolled process kills.
 - Report explicit capability, version and health information.
+- Validate and forward the private NpcTransferEndpoint from fresh runtime status, independently of the configured game endpoint.
 - Keep filesystem and systemd behavior in `Scripts` where possible.
 
 ## Verification
