@@ -32,6 +32,7 @@ public sealed class InstanceRuntimeStatusReader(
                 (status.NpcTransferEndpoint is not null &&
                  !NpcTransferContractValidator.IsValidPeerEndpoint(status.NpcTransferEndpoint)) ||
                 status.CurrentPlayers < 0 || status.MaxPlayers <= 0 || status.CurrentPlayers > status.MaxPlayers ||
+                !status.PermissionsReady || status.PermissionRevision < 0 ||
                 !string.Equals(status.Endpoint, endpoint, StringComparison.Ordinal))
                 return null;
 
@@ -51,6 +52,8 @@ public sealed record InstanceRuntimeStatus
     public string SystemId { get; init; } = "";
     public string[] SystemIds { get; init; } = [];
     public bool IsReady { get; init; }
+    public bool PermissionsReady { get; init; }
+    public long PermissionRevision { get; init; }
     public bool IsDraining { get; init; }
     public int CurrentPlayers { get; init; }
     public int MaxPlayers { get; init; }

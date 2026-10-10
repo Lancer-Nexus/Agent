@@ -13,6 +13,8 @@ namespace LancerNexus.Agent;
 [SupportedOSPlatform("linux")]
 public sealed class AgentCoordinatorControlService : BackgroundService
 {
+    private const long ProtocolStreamErrorCode = 0x100;
+    private const long ProtocolConnectionErrorCode = 0x101;
     private const int MaxSerializedEnvelopeLength = checked((int)ClusterEnvelopeValidator.MaxPayloadLength + 16 * 1024);
     private static readonly SslApplicationProtocol Alpn = new(AgentQuicSettings.Alpn);
     private static readonly MessagePackSerializerOptions UntrustedMessagePack =
@@ -88,6 +90,8 @@ public sealed class AgentCoordinatorControlService : BackgroundService
         var options = new QuicClientConnectionOptions
         {
             RemoteEndPoint = settings.CoordinatorEndPoint,
+            DefaultStreamErrorCode = ProtocolStreamErrorCode,
+            DefaultCloseErrorCode = ProtocolConnectionErrorCode,
             ClientAuthenticationOptions = new SslClientAuthenticationOptions
             {
                 TargetHost = settings.CoordinatorServerName,

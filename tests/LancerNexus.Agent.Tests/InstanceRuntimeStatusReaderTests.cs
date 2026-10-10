@@ -49,6 +49,8 @@ public sealed class InstanceRuntimeStatusReaderTests
         Assert.Equal(17, actual.CurrentPlayers);
         Assert.Equal(200, actual.MaxPlayers);
         Assert.False(Read(status with { IsReady = false })!.IsReady);
+        Assert.Null(Read(status with { PermissionsReady = false }));
+        Assert.Null(Read(status with { PermissionRevision = -1 }));
 
         var draining = Read(status with { IsDraining = true });
         Assert.NotNull(draining);
@@ -118,6 +120,8 @@ public sealed class InstanceRuntimeStatusReaderTests
         InstanceId = "liberty-01",
         SystemId = "li01",
         IsReady = true,
+        PermissionsReady = true,
+        PermissionRevision = 7,
         CurrentPlayers = 17,
         MaxPlayers = 200,
         Endpoint = "10.20.0.31:2300"
