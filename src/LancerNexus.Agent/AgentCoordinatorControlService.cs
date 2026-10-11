@@ -103,9 +103,60 @@ public sealed class AgentCoordinatorControlService : BackgroundService
         };
 
         await using var connection = await QuicConnection.ConnectAsync(options, cancellationToken);
-        await ExchangeHelloAsync(connection, cancellationToken);
+        var negotiatedCapabilities = await ExchangeHelloAsync(connection, cancellationToken);
         logger.LogInformation("Agent established an authenticated QUIC control session to {EndPoint}", settings.CoordinatorEndPoint);
 
+        using var workers = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        AgentMarketTradeIpcServer? marketTradeRelay = null;
+        Task? marketTradeRelayTask = null;
+        try
+        {
+            if (negotiatedCapabilities.Contains(ClusterCapabilities.DynamicMarketV1, StringComparer.Ordinal))
+            {
+                if (settings.MarketTradeSocketPath is null || settings.InstanceId is null || settings.SystemId is null)
+                    throw new ProtocolViolationException(
+                        "Coordinator negotiated dynamic_market_v1 without the required local market relay configuration.");
+                marketTradeRelay = new AgentMarketTradeIpcServer(
+                    settings.MarketTradeSocketPath,
+                    settings.InstanceId,
+                    settings.SystemId,
+                    settings.InstanceSystemIds ?? [],
+                    logger);
+                marketTradeRelayTask = marketTradeRelay.RunAsync(
+                    (trade, token) => SendMarketTradeEventAsync(connection, trade, token),
+                    workers.Token);
+            }
+
+            var heartbeatTask = RunHeartbeatLoopAsync(connection, workers.Token);
+            if (marketTradeRelayTask is null)
+            {
+                await heartbeatTask.ConfigureAwait(false);
+            }
+            else
+            {
+                var completed = await Task.WhenAny(heartbeatTask, marketTradeRelayTask).ConfigureAwait(false);
+                await completed.ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            workers.Cancel();
+            if (marketTradeRelayTask is not null)
+            {
+                try
+                {
+                    await marketTradeRelayTask.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (workers.IsCancellationRequested)
+                {
+                }
+            }
+            marketTradeRelay?.Dispose();
+        }
+    }
+
+    private async Task RunHeartbeatLoopAsync(QuicConnection connection, CancellationToken cancellationToken)
+    {
         while (!cancellationToken.IsCancellationRequested)
         {
             await Task.Delay(settings.HeartbeatInterval, cancellationToken);
@@ -113,7 +164,7 @@ public sealed class AgentCoordinatorControlService : BackgroundService
         }
     }
 
-    private async Task ExchangeHelloAsync(QuicConnection connection, CancellationToken cancellationToken)
+    private async Task<string[]> ExchangeHelloAsync(QuicConnection connection, CancellationToken cancellationToken)
     {
         var hello = new ClusterHello
         {
@@ -137,6 +188,29 @@ public sealed class AgentCoordinatorControlService : BackgroundService
         if (settings.InstanceStatusFilePath is not null &&
             !result.NegotiatedCapabilities.Contains("instance_heartbeat_v1", StringComparer.Ordinal))
             throw new ProtocolViolationException("Coordinator did not negotiate the configured instance heartbeat capability.");
+        if (settings.MarketTradeSocketPath is not null &&
+            !result.NegotiatedCapabilities.Contains(ClusterCapabilities.DynamicMarketV1, StringComparer.Ordinal))
+            logger.LogWarning("Coordinator did not negotiate dynamic_market_v1; the local market event socket will remain closed.");
+        return result.NegotiatedCapabilities;
+    }
+
+    private async Task<MarketTradeEventAcknowledgementV1> SendMarketTradeEventAsync(
+        QuicConnection connection,
+        MarketTradeEventV1 trade,
+        CancellationToken cancellationToken)
+    {
+        var request = CreateEnvelope(ClusterMessageType.MarketTradeEvent, ClusterFrameFlags.Request,
+            checked((ulong)trade.Sequence), MessagePackSerializer.Serialize(trade));
+        var response = await ExchangeAsync(connection, request, cancellationToken).ConfigureAwait(false);
+        if (response.MessageType != (ushort)ClusterMessageType.MarketTradeEventAcknowledgement ||
+            response.Sequence != request.Sequence)
+            throw new ProtocolViolationException("Coordinator returned an invalid market trade acknowledgement envelope.");
+
+        var acknowledgement = MessagePackSerializer.Deserialize<MarketTradeEventAcknowledgementV1>(
+            response.Payload, UntrustedMessagePack);
+        if (!acknowledgement.Matches(trade))
+            throw new ProtocolViolationException("Coordinator returned a market trade acknowledgement for another event.");
+        return acknowledgement;
     }
 
     private async Task SendHeartbeatAsync(QuicConnection connection, CancellationToken cancellationToken)

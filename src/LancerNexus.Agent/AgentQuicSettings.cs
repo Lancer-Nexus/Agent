@@ -1,4 +1,5 @@
 using System.Net;
+using LancerNexus.Protocol;
 
 namespace LancerNexus.Agent;
 
@@ -19,7 +20,8 @@ public sealed record AgentQuicSettings(
     string? SystemId,
     string? InstanceEndpoint,
     int InstanceMaxPlayers,
-    string[]? InstanceSystemIds = null)
+    string[]? InstanceSystemIds = null,
+    string? MarketTradeSocketPath = null)
 {
     public const string Alpn = "lancer-nexus-control/1";
 
@@ -68,6 +70,15 @@ public sealed record AgentQuicSettings(
             capabilities.Distinct(StringComparer.Ordinal).Count() != capabilities.Length)
             throw new InvalidOperationException("Agent capabilities must be non-empty and unique.");
 
+        var marketTradeSocket = configuration["Agent:MarketTrade:SocketPath"];
+        var hasMarketTradeCapability = capabilities.Contains(ClusterCapabilities.DynamicMarketV1, StringComparer.Ordinal);
+        if (hasMarketTradeCapability && (!hasInstanceStatus || string.IsNullOrWhiteSpace(marketTradeSocket)))
+            throw new InvalidOperationException(
+                "The dynamic_market_v1 capability requires an instance heartbeat and Agent:MarketTrade:SocketPath.");
+        if (!hasMarketTradeCapability && !string.IsNullOrWhiteSpace(marketTradeSocket))
+            throw new InvalidOperationException(
+                "Agent:MarketTrade:SocketPath requires the dynamic_market_v1 capability.");
+
         return new AgentQuicSettings(
             endpoint!,
             serverName,
@@ -85,6 +96,7 @@ public sealed record AgentQuicSettings(
             systemId,
             instanceEndpoint,
             instanceMaxPlayers,
-            systemIds);
+            systemIds,
+            hasMarketTradeCapability ? Path.GetFullPath(marketTradeSocket!) : null);
     }
 }

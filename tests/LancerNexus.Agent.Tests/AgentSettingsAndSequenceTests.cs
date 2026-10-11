@@ -92,6 +92,50 @@ public sealed class AgentSettingsAndSequenceTests
     }
 
     [Fact]
+    public void DynamicMarketCapabilityRequiresAnInstanceAndLocalSocket()
+    {
+        var configuration = BaseConfiguration();
+        configuration["Agent:Capabilities:0"] = "cluster_handshake_v1";
+        configuration["Agent:Capabilities:1"] = "agent_heartbeat_v1";
+        configuration["Agent:Capabilities:2"] = "dynamic_market_v1";
+
+        Assert.Throws<InvalidOperationException>(() => AgentQuicSettings.FromConfiguration(
+            new ConfigurationBuilder().AddInMemoryCollection(configuration).Build()));
+    }
+
+    [Fact]
+    public void DynamicMarketConfigurationSetsAnAbsoluteLocalSocketPath()
+    {
+        var configuration = BaseConfiguration();
+        configuration["Agent:Capabilities:0"] = "cluster_handshake_v1";
+        configuration["Agent:Capabilities:1"] = "agent_heartbeat_v1";
+        configuration["Agent:Capabilities:2"] = "instance_heartbeat_v1";
+        configuration["Agent:Capabilities:3"] = "dynamic_market_v1";
+        configuration["Agent:Instance:StatusFile"] = "/run/lancer-nexus/instance-status.json";
+        configuration["Agent:Instance:InstanceId"] = "liberty-01";
+        configuration["Agent:Instance:SystemId"] = "li01";
+        configuration["Agent:Instance:Endpoint"] = "10.20.0.31:2300";
+        configuration["Agent:Instance:MaxPlayers"] = "200";
+        configuration["Agent:MarketTrade:SocketPath"] = "runtime/market-trade.sock";
+
+        var settings = AgentQuicSettings.FromConfiguration(
+            new ConfigurationBuilder().AddInMemoryCollection(configuration).Build());
+
+        Assert.Equal(Path.GetFullPath("runtime/market-trade.sock"), settings.MarketTradeSocketPath);
+    }
+
+    private static Dictionary<string, string?> BaseConfiguration() => new()
+    {
+        ["Agent:Coordinator:QuicEndpoint"] = "10.20.0.20:7443",
+        ["Agent:Coordinator:ServerName"] = "coordinator.internal",
+        ["Agent:NodeId"] = "node-01",
+        ["Agent:AgentId"] = "agent-01",
+        ["Agent:Coordinator:ClientCertificatePath"] = "agent.pfx",
+        ["Agent:Coordinator:CaCertificatePath"] = "coordinator-ca.pem",
+        ["Agent:StateFile"] = "agent-state/sequence.txt"
+    };
+
+    [Fact]
     public void SequenceStorePersistsIncreasingValuesAcrossInstances()
     {
         var path = Path.Combine(Path.GetTempPath(), $"lancer-agent-sequence-{Guid.NewGuid():N}.txt");
